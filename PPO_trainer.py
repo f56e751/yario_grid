@@ -177,17 +177,25 @@ def train():
         state = env.reset()
         current_ep_reward = 0
 
+        prev_action = 0
+
         for t in range(1, max_ep_len+1):
+            time_step +=1
+        
+            if time_step % 4 != 0:
+                action = env.step_new_ppo(prev_action)
+                continue
 
             # select action with policy
             action = ppo_agent.select_action(state)
+            prev_action = action
             state, reward, done, _ = env.step_new_ppo(action)
             # print(state.size())
             # saving reward and is_terminals
             ppo_agent.buffer.rewards.append(reward)
             ppo_agent.buffer.is_terminals.append(done)
 
-            time_step +=1
+            
             current_ep_reward += reward
 
             # update PPO agent
