@@ -41,7 +41,7 @@ def run_game(index, x_pixel_num, y_pixel_num, visualize, window_x, window_y):
 #         if done:
 #             env.reset()
 
-if __name__ == "__main__":
+def multithread_test():
     pygame.init()
     app = QApplication([])
 
@@ -75,3 +75,8 @@ if __name__ == "__main__":
 
     for process in processes:
         process.join()
+
+
+if __name__ == "__main__":
+    game = Game(256,240,True)
+    

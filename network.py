@@ -127,6 +127,117 @@ class PPOAgent(nn.Module):
 
 
 
+class PPOAgent_CNN(nn.Module):
+    def __init__(self, input_channels, feature_dim, output_dim, lr_policy=1e-3, lr_value=1e-3):
+        super(PPOAgent, self).__init__()
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        ########### CNN layers ###########
+        self.features = nn.Sequential(
+            nn.Conv2d(input_channels, 32, kernel_size=8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(64 * feature_dim * feature_dim, 512),  # Adjust the size according to your final feature map dimensions
+            nn.ReLU()
+        )
+
+        ########### action head ###########
+        self.action_head = nn.Linear(512, output_dim)
+
+        ############ value head ###########
+        self.value_head = nn.Linear(512, 1)
+
+        ############# optimizers ############
+        self.optimizer = torch.optim.Adam([
+                {'params': self.policy.actor.parameters(), 'lr': lr_actor},
+                {'params': self.policy.critic.parameters(), 'lr': lr_critic}
+            ])
+        # self.policy_optimizer = optim.Adam(self.get_policy_parameters(), lr=lr_policy)
+        # self.value_optimizer = optim.Adam(self.get_value_parameters(), lr=lr_value)
+
+    def get_policy_parameters(self):
+        return list(self.features.parameters()) + list(self.action_head.parameters())
+
+    def get_value_parameters(self):
+        return list(self.features.parameters()) + list(self.value_head.parameters())
+
+    def forward(self, x):
+        x = self.features(x)
+        action_logits = self.action_head(x)
+        value = self.value_head(x)
+        return action_logits, value
+
+    def select_action(self, state):
+        if state.size(1) != self.features[0].in_channels:
+            raise ValueError(f"Expected input channel is {self.features[0].in_channels}, but got {state.size(1)}")
+        
+        state = state.to(self.device)
+        action_logits, value = self.forward(state)
+        action_probs = F.softmax(action_logits, dim=-1)
+        dist = torch.distributions.Categorical(action_probs)
+        action = dist.sample()
+        return action.item(), dist.log_prob(action).unsqueeze(0), value
+
+    def update(self, states, actions, returns, advantages, log_probs, old_log_probs, old_values, batch_size, clip_epsilon):
+        # 각각의 tensor를 GPU로 이동
+        states = torch.stack(states).to(self.device).detach()
+        actions = torch.cat(actions).to(self.device).detach()
+        returns = torch.cat(returns).to(self.device).detach()
+        advantages = torch.cat(advantages).to(self.device).detach()
+        log_probs = torch.cat(log_probs).to(self.device)
+        old_log_probs = torch.cat(old_log_probs).to(self.device).detach()
+        old_values = torch.cat(old_values).to(self.device).detach()
+
+        policy_losses = []
+        value_losses = []
+
+        for _ in range(10):
+            indices = torch.randperm(len(states)).to(states.device)
+            for i in range(0, len(states), batch_size):
+                sampled_indices = indices[i:i+batch_size]
+                sampled_states = states[sampled_indices]
+                sampled_actions = actions[sampled_indices]
+                sampled_returns = returns[sampled_indices]
+                sampled_advantages = advantages[sampled_indices]
+                sampled_log_probs = log_probs[sampled_indices]
+                sampled_old_log_probs = old_log_probs[sampled_indices]
+                sampled_old_values = old_values[sampled_indices]
+
+                # Forward pass
+                action_logits, values = self.forward(sampled_states)
+                new_log_probs = torch.log(F.softmax(action_logits, dim=-1) + 1e-10)
+
+                sampled_actions = sampled_actions.to(torch.int64).unsqueeze(1)
+                sampled_new_log_probs = torch.gather(new_log_probs, 1, sampled_actions).squeeze(1)
+
+                # PPO objective function
+                ratios = torch.exp(sampled_new_log_probs - sampled_old_log_probs)
+                surr1 = ratios * sampled_advantages
+                surr2 = torch.clamp(ratios, 1 - clip_epsilon, 1 + clip_epsilon) * sampled_advantages
+                policy_loss = -torch.min(surr1, surr2).mean()
+                value_loss = F.mse_loss(values.squeeze(1), sampled_returns)
+
+                # Optimizers
+                self.policy_optimizer.zero_grad()
+                policy_loss.backward()
+                self.policy_optimizer.step()
+
+                self.value_optimizer.zero_grad()
+                value_loss.backward()
+                self.value_optimizer.step()
+
+                policy_losses.append(policy_loss.item())
+                value_losses.append(value_loss.item())
+
+        return sum(policy_losses) / len(policy_losses), sum(value_losses) / len(value_losses)
+
+
+
 # 네트워크 초기화 함수
 def create_agent(input_dim, hidden_dims, output_dim):
     agent = PPOAgent(input_dim, hidden_dims, output_dim).to(device)
@@ -149,6 +260,11 @@ def test_agent():
         print("Selected Action:", action)
         # print("Log Probability of Selected Action:", log_prob)
         # print("Value of the current state:", value)
+
+
+
+
+
 
 if __name__ == "__main__":
     # GPU 장치 설정 (GPU가 있으면 GPU 사용, 없으면 CPU 사용)

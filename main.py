@@ -155,6 +155,10 @@ class Main:
                     self.game.is_dead()
                     self.game.is_world_cleared()
 
+
+                    self.game.get_img_tensor()
+
+
                     keys = pygame.key.get_pressed()  
                     if keys[pygame.K_n]:
                         print('n pressed')
@@ -283,6 +287,6 @@ if __name__ == "__main__":
     
     # model_summary()
     model_path =  "./models/ppo_agent_episode_149_1732292231.pth"
-    main = Main(model_path = model_path, human_mode=False, use_yolo = False, training = True, visualize = True, grid_visualize = False)
+    main = Main(model_path = model_path, human_mode=True, use_yolo = False, training = False, visualize = True, grid_visualize = False)
     main.run()
 

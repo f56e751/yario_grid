@@ -11,6 +11,10 @@ import time
 import sys
 import os
 
+import torch
+from torchvision import transforms
+
+
 class Game():
     def __init__(self, x_pixel_num, y_pixel_num, visualize, window_x = 500, window_y = 500, center = True):
         # self.env = retro.make(game='SuperMarioBros-Nes', state = 'Level3-1')
@@ -81,6 +85,13 @@ class Game():
                     10: np.array( [1, 0,    0,      0,     0, 0, 0, 1, 1], np.int8),
                     11: np.array( [1, 0,    0,      0,     0, 0, 1, 0, 1], np.int8),
                     }
+
+        # self.transform = transforms.ToTensor()
+
+        self.transform = transforms.Compose([
+                    transforms.Grayscale(),  # 그레이스케일 변환
+                    transforms.ToTensor()    # 텐서 변환
+                ])
 
     def stop(self):
         self.running = False
@@ -168,7 +179,27 @@ class Game():
 
         return reward, is_world_cleared, None
         ###########################################
-    
+
+    def step_new_ppo(self,action):
+        # action은 정수
+        action_np = self.action_map[action]
+        obs, rew, done, info = self.env.step(action_np)
+        # rew 값이 계속 증가하지 않고 0, 1, 2 값만 반환함 -> 
+        # reward = 
+
+        reward = self.get_reward()
+        is_world_cleared = self.is_world_cleared()
+        is_dead = self.is_dead()
+
+        # 월드를 클리어했거나 죽었으면 시작지점으로 게임을 초기화
+        if is_world_cleared or is_dead:
+            self.reset()
+
+        self.visualize_frame()
+
+        state = self.get_img_tensor()
+        return state, reward, is_world_cleared, None
+
     def get_reward(self):
         ram = self.env.get_ram()
         reward = 0
@@ -253,6 +284,8 @@ class Game():
         self.prev_mario_state = 0
         self.prev_mario_x = 0
 
+        state = self.get_img_tensor()
+        return state
 
 
     def get_mario_score(self):
@@ -335,7 +368,19 @@ class Game():
 
         return self.tile_info
     
+    def get_img_tensor(self):
+        frame = pygame.surfarray.make_surface(self.env.render(mode='rgb_array').swapaxes(0, 1))
 
+        # 이미지 크기를 원래의 절반으로 스케일링
+        half_x_pixel_num = self.x_pixel_num // 2
+        half_y_pixel_num = self.y_pixel_num // 2
+        frame = pygame.transform.scale(frame, (half_x_pixel_num, half_y_pixel_num))  # 스케일링
+        pil_image = Image.frombytes('RGB', (half_x_pixel_num, half_y_pixel_num), pygame.image.tostring(frame, 'RGB'))
+        
+        tensor_image = self.transform(pil_image)
+
+        tensor_image = tensor_image.unsqueeze(0)  # 배치 차원 추가
+        return tensor_image
 
     # network에 입력할 tensor를 반환하는 함수
     # base_frame_count만큼 프레임이 지나갔을때 반환함

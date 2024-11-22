@@ -6,6 +6,7 @@ from utils import SMB, EnemyType, StaticTileType, ColorMap, DynamicTileType, Ite
 from typing import Tuple, List, Optional
 from yolo_class_mapping import ClassMapping
 
+
 # TODO GridVisualizer 완성하기
 class GridVisualizer(QtWidgets.QWidget):
     def __init__(self, parent, size):
