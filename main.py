@@ -33,6 +33,8 @@ class Main:
         self.y_pixel_num = 240
         self.clock = pygame.time.Clock()
         self.game = Game(self.x_pixel_num, self.y_pixel_num, visualize)
+        # self.game_1 = Game(self.x_pixel_num, self.y_pixel_num, visualize)
+        # self.game_2 = Game(self.x_pixel_num, self.y_pixel_num, visualize)
         # self.gameFrameVisualizer = GameFrameVisualizer()
         self.grid_window = GridWindow()
         self.grid_visualize = grid_visualize
@@ -76,6 +78,7 @@ class Main:
             trainer = Trainer(agent = self.agent, game = self.game, use_yolo = self.use_yolo)
             # trainer.train_test()
             trainer.train()
+            # trainer.train_multithreading(True,4)
 
     def load_model(self):
         input_dim = (15 * 16 * 4 + 3) * 4 + 12 # (15 * 16 * 4 + 3(마리오 상태) ) * 4 + 12(action) : 3864
@@ -279,7 +282,7 @@ if __name__ == "__main__":
     
     
     # model_summary()
-    model_path =  "./models/ppo_agent_episode_0_1732116333.pth"
+    model_path =  "./models/ppo_agent_episode_149_1732292231.pth"
     main = Main(model_path = model_path, human_mode=False, use_yolo = False, training = True, visualize = True, grid_visualize = False)
     main.run()
 

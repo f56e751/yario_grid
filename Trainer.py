@@ -5,6 +5,8 @@ import time
 from collections import deque
 import numpy as np
 import os
+import threading
+import queue
 
 from Game import Game
 from network import PPOAgent
@@ -39,6 +41,7 @@ class Trainer():
         self.AgentInput = AgentInput(self.agent)
         self.yolo_model = Yolo_Model(x_pixel_num=256, y_pixel_num=240)  # YOLO 모델
         self.game = game  # 게임 환경
+        self.games = [] # 멀티스레딩에 이용
 
         # 옵티마이저 설정
         # self.optimizer = optim.Adam(self.agent.parameters(), lr=LR)
@@ -53,6 +56,15 @@ class Trainer():
         ### 저장
         self.model_dir = './models'  # 모델을 저장할 디렉터리
         os.makedirs(self.model_dir, exist_ok=True)
+
+
+        ###### 멀티스레딩 사용 변수 #########
+        self.threading_num = None
+        self.games = []
+        self.data_queue = queue.Queue()
+        self.update_lock = threading.Lock()
+        self.training = True
+        self.prev_actions = None
 
     # def save_model(self, episode):
     #     """ 모델의 파라미터를 저장합니다. """
@@ -103,6 +115,20 @@ class Trainer():
             return tensor_state
         else:
             tensor_state = self.game.get_tensor()
+            
+            # print(tensor_state)
+            return tensor_state
+        
+    def get_tensor_by_given_game(self, game: Game):
+        if self.use_yolo:
+            mario_state = game.get_mario_state()  # 4프레임 동안의 마리오 상태 (12차원 벡터)
+            # YOLO 모델을 사용하여 상태 추출
+            yolo_input_img = game.get_yolo_input_img()
+            tensor_state = self.yolo_model.get_tensor(yolo_input_img, mario_state)
+            
+            return tensor_state
+        else:
+            tensor_state = game.get_tensor()
             
             # print(tensor_state)
             return tensor_state
@@ -222,7 +248,123 @@ class Trainer():
             print(f"Episode {episode + 1}/{NUM_EPISODES} completed.")
 
 
-            
+
+    def train_multithreading(self, visualize, num_games, x_pixel_num = 256, y_pixel_num = 240):
+        self.games = [Game(x_pixel_num, y_pixel_num, visualize) for _ in range(num_games)]
+        self.prev_actions = {}
+        for i in range(num_games):
+            self.prev_actions[i] = 0
+
+        threads = [
+            threading.Thread(target=self.agent_run, args=(game_id, game, self.agent))
+            for game_id, game in enumerate(self.games)
+        ]
+        for thread in threads:
+            thread.start()
+        
+        updater_thread = threading.Thread(target=self.update_network)
+        updater_thread.start()
+
+        for thread in threads:
+            thread.join()
+        
+        updater_thread.join()     
+        return
+
+    def agent_run(self, game_id, game, agent):
+        episode = 0
+        while self.training:
+            state = None
+            states, actions, rewards, values, log_probs, masks = [], [], [], [], [], []
+            old_log_probs, old_values = [], [] 
+
+            actual_steps = 0
+            avg_policy_loss = 0
+            avg_value_loss = 0
+            avg_reward = 0
+
+            for step in range(MAX_STEPS):
+                tensor_state = self.get_tensor_by_given_game(game)
+                prev_action = self.prev_action[game_id]
+                if tensor_state is None:
+                    action_np = self.AgentInput.get_action_np(prev_action)
+                    reward, done, _ = game.step(action_np)
+                    continue
+
+                actual_steps += 1
+                # 이전 action을 one-hot 벡터로 결합
+                # prev_action = self.game.get_prev_action_index()  # 12차원 벡터 (이전 행동)
+                prev_action_one_hot = torch.zeros(self.action_dim)
+                prev_action_one_hot[prev_action] = 1
+
+                full_state = torch.cat([tensor_state, prev_action_one_hot])
+                full_state = full_state.to(self.device)
+
+
+                # 에이전트 행동 선택
+                action_int, action_tensor, log_prob, value = self.agent.select_action(full_state)
+                self.prev_action = action_int
+                action_np = self.AgentInput.get_action_np(action_int) # action = np.array([0] * 9)
+                
+                action_one_hot = torch.zeros(self.action_dim)
+                action_one_hot[action_int] = 1
+                # 보상 및 게임 정보 업데이트
+                reward, done, _ = self.game.step(action_np)  # step() 메소드에서 보상과 종료 여부 받기
+                
+                if actual_steps % 1000 == 0:
+                    print(f"episode {episode} {step / MAX_STEPS:.2f}%")
+                    print(f"current_step: {step}")
+                    print(f"prev action: {self.prev_action}")
+                    # print(f"elapsed time: {current_time - start_time}")
+                    print(f"reward: {reward}")
+                    print(f"log_prob: {log_prob}")
+                
+
+                states.append(full_state)  # 현재 상태를 states 리스트에 추가
+                rewards.append(reward)
+                log_probs.append(log_prob)
+                values.append(value)
+                masks.append(1 - done)
+                actions.append(action_one_hot)
+                old_log_probs.append(log_prob.detach())  # 이전 log_prob 저장
+                old_values.append(value.detach())  # 이전 value 저장
+
+
+                if done:
+                    game.reset()
+                    break
+
+                if step % UPDATE_INTERVAL == 0:
+                    with self.update_lock:
+                        self.data_queue.put((states, actions, rewards, values, log_probs, masks, old_log_probs, old_values))
+                    states, actions, rewards, values, log_probs, masks = [], [], [], [], [], []
+                    old_log_probs, old_values = [], []
+
+            episode += 1
+            if episode >= NUM_EPISODES:
+                self.training = False
+
+    def update_network(self):
+        while self.training or not self.data_queue.empty():
+            all_states, all_actions, all_rewards, all_values, all_log_probs, all_masks, all_old_log_probs, all_old_values = [], [], [], [], [], [], [], []
+            while not self.data_queue.empty():
+                data = self.data_queue.get()
+                states, actions, rewards, values, log_probs, masks, old_log_probs, old_values = data
+                all_states.extend(states)
+                all_actions.extend(actions)
+                all_rewards.extend(rewards)
+                all_values.extend(values)
+                all_log_probs.extend(log_probs)
+                all_masks.extend(masks)
+                all_old_log_probs.extend(old_log_probs)
+                all_old_values.extend(old_values)
+
+            if all_states:
+                # 신경망 업데이트 로직
+                all_returns, all_advantages = self.compute_gae(all_rewards, all_values, all_masks)
+                # self.global_agent.update(all_states, all_actions, all_rewards, all_values, all_log_probs, all_masks, BATCH_SIZE, CLIP_EPSILON)
+                avg_policy_loss, avg_value_loss = self.agent.update(all_states, all_actions, all_returns, all_advantages, all_log_probs, all_old_log_probs, all_old_values, BATCH_SIZE, CLIP_EPSILON)
+                avg_reward = np.mean(all_rewards)
             
     def compute_gae(self, rewards, values, masks, gamma=GAMMA, gae_lambda=GAE_LAMBDA):
         # GAE advantage 계산

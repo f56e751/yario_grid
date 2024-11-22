@@ -8,15 +8,36 @@ from tensor import Tensor
 from yolo_class_mapping import ClassMapping
 import torch
 import time
+import sys
+import os
 
 class Game():
-    def __init__(self, x_pixel_num, y_pixel_num, visualize):
+    def __init__(self, x_pixel_num, y_pixel_num, visualize, window_x = 500, window_y = 500, center = True):
         # self.env = retro.make(game='SuperMarioBros-Nes', state = 'Level3-1')
         self.env = retro.make(game='SuperMarioBros-Nes', state = 'Level1-1')
         self.env.reset()
-        
         # Pygame 설정
         pygame.init()
+
+        # if visualize:
+        #     if not center:
+        #         os.environ['SDL_VIDEO_WINDOW_POS'] = f"{window_x},{window_y}"
+        #     else:
+        #         screen_info = pygame.display.Info()
+        #         screen_width, screen_height = screen_info.current_w, screen_info.current_h
+                
+        #         # 창의 중앙 위치 계산
+        #         window_x = (screen_width - x_pixel_num) // 2
+        #         window_y = (screen_height - y_pixel_num) // 2
+        #         os.environ['SDL_VIDEO_WINDOW_POS'] = f"{window_x},{window_y}"
+            
+        
+        
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
         self.x_pixel_num = x_pixel_num
         self.y_pixel_num = y_pixel_num
         self.visualize = visualize
