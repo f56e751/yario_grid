@@ -71,7 +71,7 @@ class Game():
         self.previous_action = np.array( [0, 1,    0,      0,     0, 0, 0, 0, 0], np.int8)
         self.prev_mario_state = 0
         self.prev_score = 0
-        self.prev_mario_x = 0
+        self.prev_mario_x = 40
         self.action_map = { 0: np.array( [0, 1,    0,      0,     0, 0, 0, 0, 0], np.int8),
                     1: np.array( [0, 0,    0,      0,     0, 1, 0, 0, 0], np.int8),
                     2: np.array( [0, 0,    0,      0,     0, 0, 1, 0, 0], np.int8),
@@ -191,13 +191,15 @@ class Game():
         is_world_cleared = self.is_world_cleared()
         is_dead = self.is_dead()
 
-        # 월드를 클리어했거나 죽었으면 시작지점으로 게임을 초기화
-        if is_world_cleared or is_dead:
-            self.reset()
+        # print(f"reward: {reward}")
+        # time.sleep(0.2)
 
         self.visualize_frame()
 
         state = self.get_img_tensor()
+        # 월드를 클리어했거나 죽었으면 시작지점으로 게임을 초기화
+        if is_world_cleared or is_dead:
+            self.reset()
         return state, reward, is_world_cleared, None
 
     def get_reward(self):
@@ -205,7 +207,8 @@ class Game():
         reward = 0
         if self.is_dead():
             reward -= 15
-
+        if self.is_world_cleared():
+            reward += 1000
         # if self.is_get_item():
         #     reward += 1000
 
@@ -220,10 +223,10 @@ class Game():
         mario_position = SMB.get_mario_location_in_level(ram)
         position_diff = mario_position.x - self.prev_mario_x
         # print(f"position_diff: {position_diff}")
-        reward += (position_diff)
+        reward += (position_diff - 1) * 5
 
-        if position_diff <= 0:
-            reward -= 1
+        # if position_diff <= 0:
+        #     reward -= 5
         self.prev_mario_x = mario_position.x
         # print(f"reward: {reward}")
         return reward
@@ -282,7 +285,7 @@ class Game():
 
         self.prev_score = 0
         self.prev_mario_state = 0
-        self.prev_mario_x = 0
+        self.prev_mario_x = 40
 
         state = self.get_img_tensor()
         return state
