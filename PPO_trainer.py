@@ -24,7 +24,7 @@ def train():
     has_continuous_action_space = False  # continuous action space; else discrete
 
     max_ep_len = 10000                  # max timesteps in one episode
-    num_ep = 200
+    num_ep = 10000
     max_training_timesteps = max_ep_len * num_ep   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 10        # print avg reward in the interval (in num timesteps)
@@ -184,7 +184,7 @@ def train():
             time_step +=1
         
             if time_step % 4 != 0:
-                action = env.step_new_ppo(prev_action)
+                env.step_new_ppo(prev_action)
                 continue
 
             # select action with policy
@@ -236,7 +236,8 @@ def train():
             if time_step % save_model_freq == 0:
                 print("--------------------------------------------------------------------------------------------")
                 print("saving model at : " + checkpoint_path)
-                ppo_agent.save(checkpoint_path)
+                path = f"{directory}14_{time_step}.pth"
+                ppo_agent.save(path)
                 print("model saved")
                 print("Elapsed Time  : ", datetime.now().replace(microsecond=0) - start_time)
                 print("--------------------------------------------------------------------------------------------")
