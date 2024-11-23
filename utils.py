@@ -1003,6 +1003,12 @@ class SMB(object):
     @classmethod
     def is_dead(cls, ram):
         player_state = ram[cls.RAMLocations.Player_State.value]
+        # print(f"player state: {player_state}")
+        mario_x, mario_y = cls.get_mario_location_on_screen(ram)
+        
+        if mario_y > 256:
+            # print(f"mario_y: {mario_y}")
+            return True
         if player_state == 0x0B:
             return True
         else:
