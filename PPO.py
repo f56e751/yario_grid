@@ -45,7 +45,7 @@ class ActorCritic(nn.Module):
         # input_channels -> 4
         # width     -> 256
         # height    -> 240
-        input_channels = 1
+        input_channels = 4
         width = 256 / 2
         height = 240 / 2
 

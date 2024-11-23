@@ -206,7 +206,7 @@ class Game():
         ram = self.env.get_ram()
         reward = 0
         if self.is_dead():
-            reward -= 15
+            reward -= 1000
         if self.is_world_cleared():
             reward += 1000
         # if self.is_get_item():

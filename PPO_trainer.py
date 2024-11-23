@@ -179,18 +179,27 @@ def train():
         current_ep_reward = 0
 
         prev_action = 0
-
+        states = []
+        states.append(state)
+        
         for t in range(1, max_ep_len+1):
             time_step +=1
         
             if time_step % 4 != 0:
-                env.step_new_ppo(prev_action)
+                state, reward, done, _ = env.step_new_ppo(prev_action)
+                states.append(state)
                 continue
 
             # select action with policy
-            action = ppo_agent.select_action(state)
+            state_cat = torch.cat(states, dim=1)
+            action = ppo_agent.select_action(state_cat)
             prev_action = action
+
+            states = []
+            
             state, reward, done, _ = env.step_new_ppo(action)
+            # print(reward)
+            states.append(state)
             # print(state.size())
             # saving reward and is_terminals
             ppo_agent.buffer.rewards.append(reward)
