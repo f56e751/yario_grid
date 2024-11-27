@@ -156,7 +156,7 @@ class Main:
                     self.game.is_world_cleared()
 
 
-                    self.game.get_img_tensor()
+                    self.game.get_img_tensor(84,84)
 
 
                     keys = pygame.key.get_pressed()  
@@ -286,7 +286,9 @@ if __name__ == "__main__":
     
     
     # model_summary()
+    # model_path = "./PPO_preTrained\SuperMarioBros-Nes\56_5200000.pth"
     model_path =  "./models/ppo_agent_episode_149_1732292231.pth"
+    model_path = None
     main = Main(model_path = model_path, human_mode=True, use_yolo = False, training = False, visualize = True, grid_visualize = False)
     main.run()
 

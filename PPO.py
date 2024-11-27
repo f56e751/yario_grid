@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
-
+# https://github.com/vietnh1009/Super-mario-bros-PPO-pytorch/blob/master/train.py
 ################################## set device ##################################
 print("============================================================================================")
 # set device to cpu or cuda
@@ -45,91 +45,88 @@ class ActorCritic(nn.Module):
         # input_channels -> 4
         # width     -> 256
         # height    -> 240
-        input_channels = 4
-        width = 256 / 2
-        height = 240 / 2
-
+        input_channels, width, height = state_dim
+        # input_channels = 4
+        # width = 256 / 2
+        # height = 240 / 2
+        
+        # input_channels += 12
         layers_info = [
-            (32, 8, 4),  # 첫 번째 컨볼루션 레이어: 32채널, 8x8 필터, 스트라이드 4
-            (64, 4, 2),  # 두 번째 컨볼루션 레이어: 64채널, 4x4 필터, 스트라이드 2
-            (64, 3, 1)   # 세 번째 컨볼루션 레이어: 64채널, 3x3 필터, 스트라이드 1
+            (64, 3, 2, 1),  # 첫 번째 컨볼루션 레이어: 32채널, 3x3 필터, 스트라이드 2 패딩 1
+            (64, 3, 2, 1),  
+            (64, 3, 2, 1),
+            (64, 3, 2, 1),   
         ]
 
+        # layers_info = [
+        #     (32, 3, 2, 1),  # 첫 번째 컨볼루션 레이어: 32채널, 3x3 필터, 스트라이드 2 패딩 1
+        #     (32, 3, 2, 1),  
+        #     (32, 3, 2, 1),
+        #     (32, 3, 2, 1),   
+        # ]
+
+
+        # layers_info = [
+        #     (32, 7, 3, 1),  # 첫 번째 컨볼루션 레이어: 32채널, 3x3 필터, 스트라이드 2 패딩 1
+        #     (32, 5, 2, 1),  
+        #     (64, 5, 2, 1),
+        # ]
 
         # Common feature extractor
         self.actor_features = self._make_layers(input_channels, layers_info)
         self.critic_features = self._make_layers(input_channels, layers_info)
         
-        final_dim = self._calculate_feature_dim(height, width, layers_info)
-
+        # final_dim = self._calculate_feature_dim(height, width, layers_info)
+        final_dim = 2304
+        # final_dim = 1152
+        # final_dim = 3584
+        # print(f"final dim is: {final_dim}")
         # Actor network
         if has_continuous_action_space:
             self.action_dim = action_dim
             self.action_var = torch.full((action_dim,), action_std_init * action_std_init, device=self.device)
             self.actor = nn.Sequential(
                 self.actor_features,
-                nn.Linear(final_dim, action_dim),
+                nn.Linear(final_dim, 512),
+                nn.ReLU(),
+                nn.Linear(512, action_dim),
                 nn.Tanh()
             )
         else:
             self.actor = nn.Sequential(
                 self.actor_features,
-                nn.Linear(final_dim, action_dim),
+                nn.Linear(final_dim, 512),
+                nn.ReLU(),
+                nn.Linear(512, action_dim),
                 nn.Softmax(dim=-1)
             )
 
-        # Critic network
+
         self.critic = nn.Sequential(
             self.critic_features,
-            nn.Linear(final_dim, 1)
+            nn.Linear(final_dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1)
         )
 
 
-        # if has_continuous_action_space:
-        #     self.action_dim = action_dim
-        #     self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
-        # # actor
-        # if has_continuous_action_space :
-        #     self.actor = nn.Sequential(
-        #                     nn.Linear(state_dim, 64),
-        #                     nn.Tanh(),
-        #                     nn.Linear(64, 64),
-        #                     nn.Tanh(),
-        #                     nn.Linear(64, action_dim),
-        #                     nn.Tanh()
-        #                 )
-        # else:
-        #     self.actor = nn.Sequential(
-        #                     nn.Linear(state_dim, 64),
-        #                     nn.Tanh(),
-        #                     nn.Linear(64, 64),
-        #                     nn.Tanh(),
-        #                     nn.Linear(64, action_dim),
-        #                     nn.Softmax(dim=-1)
-        #                 )
-        # # critic
-        # self.critic = nn.Sequential(
-        #                 nn.Linear(state_dim, 64),
-        #                 nn.Tanh(),
-        #                 nn.Linear(64, 64),
-        #                 nn.Tanh(),
-        #                 nn.Linear(64, 1)
-        #             )
+        
         
     def _make_layers(self, input_channels, layers_info):
         layers = []
         current_channels = input_channels
-        for out_channels, kernel_size, stride in layers_info:
-            layers.append(nn.Conv2d(current_channels, out_channels, kernel_size=kernel_size, stride=stride))
+        for out_channels, kernel_size, stride, padding in layers_info:
+            layers.append(nn.Conv2d(current_channels, out_channels, kernel_size=kernel_size, stride=stride, padding = padding))
             layers.append(nn.ReLU())
             current_channels = out_channels
         layers.append(nn.Flatten())
         return nn.Sequential(*layers)
 
     def _calculate_feature_dim(self, height, width, layers_info):
-        for _, kernel_size, stride in layers_info:
+        for _, kernel_size, stride, padding in layers_info:
             height = (height - kernel_size) // stride + 1
             width = (width - kernel_size) // stride + 1
+
         return int(height * width * layers_info[-1][0])  # 마지막 레이어의 채널 수를 곱함
     
     def set_action_std(self, new_action_std):

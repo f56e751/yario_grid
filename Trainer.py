@@ -15,14 +15,14 @@ from InputType import AgentInput
 
 # 하이퍼파라미터
 NUM_EPISODES = 1000
-MAX_STEPS = 100000 #30* 401 # 한 프레임30, 총 400초
-GAMMA = 0.99
+MAX_STEPS = 10000 #30* 401 # 한 프레임30, 총 400초
+GAMMA = 0.90
 GAE_LAMBDA = 0.95
 
 BATCH_SIZE = 64
 CLIP_EPSILON = 0.15  # PPO 클리핑 epsilon 값
-LR_POLICY = 1e-3  # 학습률
-LR_VALUE = 1e-3
+LR_POLICY = 1e-4  # 학습률
+LR_VALUE = 1e-4
 actualSteps = MAX_STEPS / 4
 UPDATE_INTERVAL = actualSteps / 10  # 업데이트 주기, 에피소드 하나에 10번 업데이트
 

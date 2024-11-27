@@ -11,6 +11,8 @@ import time
 import sys
 import os
 
+import matplotlib.pyplot as plt
+
 import torch
 from torchvision import transforms
 
@@ -92,6 +94,16 @@ class Game():
                     transforms.Grayscale(),  # 그레이스케일 변환
                     transforms.ToTensor()    # 텐서 변환
                 ])
+        
+        self.x_tensor_size = None
+        self.y_tensor_size = None
+
+        self.prev_time = 400
+
+    def init_tensor_size(self, x_tensor_size, y_tensor_size):
+        self.x_tensor_size = x_tensor_size
+        self.y_tensor_size = y_tensor_size
+        
 
     def stop(self):
         self.running = False
@@ -196,19 +208,24 @@ class Game():
 
         self.visualize_frame()
 
-        state = self.get_img_tensor()
+        state = self.get_img_tensor(self.x_tensor_size, self.y_tensor_size)
         # 월드를 클리어했거나 죽었으면 시작지점으로 게임을 초기화
         if is_world_cleared or is_dead:
             self.reset()
-        return state, reward, is_world_cleared, None
+        return state, reward, is_world_cleared, is_dead
+
+    def get_time(self):
+        ram = self.env.get_ram()
+        return SMB.get_Time(ram)
 
     def get_reward(self):
         ram = self.env.get_ram()
         reward = 0
-        if self.is_dead():
-            reward -= 1000
-        if self.is_world_cleared():
-            reward += 1000
+        time_remain = self.get_time()
+        time_diff = time_remain - self.prev_time 
+        self.prev_time = time_remain
+        reward += time_diff
+
         # if self.is_get_item():
         #     reward += 1000
 
@@ -216,17 +233,30 @@ class Game():
         score_diff = current_score - self.prev_score
         self.prev_score = current_score
 
-        reward += score_diff / 100
-
         # 스크린이 시작하는 지점의 값
         # 끝났을때가 3040
         mario_position = SMB.get_mario_location_in_level(ram)
         position_diff = mario_position.x - self.prev_mario_x
         # print(f"position_diff: {position_diff}")
-        reward += (position_diff - 1) * 5
+        # reward += (position_diff - 1) * 5
+        # reward += (position_diff-1)*3
 
-        # if position_diff <= 0:
-        #     reward -= 5
+        reward += time_diff
+        reward += score_diff / 40
+        reward += position_diff
+
+        if self.is_dead():
+            reward -= 65
+            # reward -= 650
+        if self.is_world_cleared():
+            reward += 50
+
+        reward /= 10
+        # if position_diff < -10:
+        #     reward += (position_diff)*10
+        # elif position_diff < 1:
+        #     reward -= 100
+
         self.prev_mario_x = mario_position.x
         # print(f"reward: {reward}")
         return reward
@@ -286,8 +316,11 @@ class Game():
         self.prev_score = 0
         self.prev_mario_state = 0
         self.prev_mario_x = 40
+        self.prev_time = 400
 
-        state = self.get_img_tensor()
+        state = None
+        if self.x_tensor_size:
+            state = self.get_img_tensor(self.x_tensor_size, self.y_tensor_size)
         return state
 
 
@@ -371,19 +404,27 @@ class Game():
 
         return self.tile_info
     
-    def get_img_tensor(self):
+    def get_img_tensor(self, x_pixel_num, y_pixel_num):
         frame = pygame.surfarray.make_surface(self.env.render(mode='rgb_array').swapaxes(0, 1))
 
-        # 이미지 크기를 원래의 절반으로 스케일링
-        half_x_pixel_num = self.x_pixel_num // 2
-        half_y_pixel_num = self.y_pixel_num // 2
-        frame = pygame.transform.scale(frame, (half_x_pixel_num, half_y_pixel_num))  # 스케일링
-        pil_image = Image.frombytes('RGB', (half_x_pixel_num, half_y_pixel_num), pygame.image.tostring(frame, 'RGB'))
+        frame = pygame.transform.scale(frame, (x_pixel_num, y_pixel_num))  # 스케일링
+        pil_image = Image.frombytes('RGB', (x_pixel_num, y_pixel_num), pygame.image.tostring(frame, 'RGB'))
         
         tensor_image = self.transform(pil_image)
 
         tensor_image = tensor_image.unsqueeze(0)  # 배치 차원 추가
+                # 텐서 시각화 및 저장
+        # self.visualize_and_save_tensor(tensor_image, 'output_image.png')
+
         return tensor_image
+
+    def visualize_and_save_tensor(self, tensor, filename):
+        plt.figure(figsize=(5, 5))  # 이미지 크기 설정
+        plt.imshow(tensor[0].permute(1, 2, 0))  # CHW -> HWC 변환
+        plt.axis('off')  # 축 숨기기
+        plt.savefig(filename)  # 이미지 파일로 저장
+        # plt.show()  # 화면에 표시
+        # plt.close()  # 리소스 해제
 
     # network에 입력할 tensor를 반환하는 함수
     # base_frame_count만큼 프레임이 지나갔을때 반환함

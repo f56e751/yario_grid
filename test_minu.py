@@ -77,6 +77,25 @@ def multithread_test():
         process.join()
 
 
+def tensor_test():
+    import torch
+
+    # 예제의 이전 행동 (prev_action), action_dim, width, height
+    prev_action = 2
+    action_dim = 12
+    width = 84
+    height = 84
+
+    # 이전 행동을 원-핫 인코딩하고 적절한 크기로 확장
+    prev_action_one_hot = torch.nn.functional.one_hot(torch.tensor(prev_action), num_classes=action_dim)
+    prev_action_one_hot = prev_action_one_hot.unsqueeze(0).unsqueeze(2).unsqueeze(3)  # [1, action_dim, 1, 1] 크기
+    prev_action_one_hot = prev_action_one_hot.expand(-1, -1, width, height)  # 상태 텐서와 동일한 공간 차원으로 확장
+
+    print(prev_action_one_hot.shape)
+    print(prev_action_one_hot)
+
+
 if __name__ == "__main__":
-    game = Game(256,240,True)
+    # game = Game(256,240,True)
+    tensor_test()
     

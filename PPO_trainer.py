@@ -23,12 +23,12 @@ def train():
 
     has_continuous_action_space = False  # continuous action space; else discrete
 
-    max_ep_len = 10000                  # max timesteps in one episode
-    num_ep = 10000
+    max_ep_len = 1024 # 10000                  # max timesteps in one episode
+    num_ep = 100000000
     max_training_timesteps = max_ep_len * num_ep   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 10        # print avg reward in the interval (in num timesteps)
-    log_freq = max_ep_len * 2           # log avg reward in the interval (in num timesteps)
+    log_freq = max_ep_len * 5           # log avg reward in the interval (in num timesteps)
     save_model_freq = int(1e5)          # save model frequency (in num timesteps)
 
     action_std = 0.6                    # starting std for action distribution (Multivariate Normal)
@@ -40,14 +40,14 @@ def train():
     ## Note : print/log frequencies should be > than max_ep_len
 
     ################ PPO hyperparameters ################
-    update_timestep = max_ep_len * 2      # update policy every n timesteps
-    K_epochs = 80               # update policy for K epochs in one PPO update
+    update_timestep = max_ep_len * 1      # update policy every n timesteps
+    K_epochs = 10               # update policy for K epochs in one PPO update
 
-    eps_clip = 0.2          # clip parameter for PPO
-    gamma = 0.99            # discount factor
+    eps_clip = 0.01          # clip parameter for PPO
+    gamma = 0.9            # discount factor
 
-    lr_actor = 0.0003       # learning rate for actor network
-    lr_critic = 0.001       # learning rate for critic network
+    lr_actor = 0.000003       # learning rate for actor network
+    lr_critic = 0.000003       # learning rate for critic network
 
     random_seed = 0         # set random seed if required (0 = no random seed)
     #####################################################
@@ -59,8 +59,11 @@ def train():
 
     # state space dimension
     # state_dim = env.observation_space.shape[0]
-    state_dim = 256 / 2, 240 / 2
-    
+    x_pixel_num, y_pixel_num = 84, 84
+    frame_stack_num = 4
+    state_dim = [frame_stack_num,x_pixel_num,y_pixel_num] # 개수,x, y
+    env.init_tensor_size(x_pixel_num, y_pixel_num)
+
     # action space dimension
     if has_continuous_action_space:
         # action_dim = env.action_space.shape[0]
@@ -151,7 +154,7 @@ def train():
 
     # initialize a PPO agent
     ppo_agent = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
-
+    ppo_agent.load(f"{directory}53_1000000.pth")
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
     print("Started training at (GMT) : ", start_time)
@@ -160,7 +163,7 @@ def train():
 
     # logging file
     log_f = open(log_f_name,"w+")
-    log_f.write('episode,timestep,reward\n')
+    log_f.write('episode,timestep,reward,cleared_ratio\n')
 
     # printing and logging variables
     print_running_reward = 0
@@ -171,40 +174,66 @@ def train():
 
     time_step = 0
     i_episode = 0
-
+    state = env.reset()
+    log_world_cleared = 0
+    log_running_trial = 0
     # training loop
     while time_step <= max_training_timesteps:
 
-        state = env.reset()
+        
         current_ep_reward = 0
 
         prev_action = 0
         states = []
+        reward_accumulated = 0
         states.append(state)
+
+        
         
         for t in range(1, max_ep_len+1):
             time_step +=1
         
-            if time_step % 4 != 0:
-                state, reward, done, _ = env.step_new_ppo(prev_action)
+            if time_step % frame_stack_num != 0:
+                state, reward, done, is_dead = env.step_new_ppo(prev_action)
                 states.append(state)
+                reward_accumulated += reward
+                if is_dead:
+                    log_running_trial += 1 
+                if done:
+                    log_world_cleared += 1
                 continue
 
             # select action with policy
             state_cat = torch.cat(states, dim=1)
+
+            # 이전 행동을 원-핫 인코딩하고 적절한 크기로 확장
+            # prev_action_one_hot = torch.nn.functional.one_hot(torch.tensor(prev_action), num_classes=action_dim)
+            # prev_action_one_hot = prev_action_one_hot.unsqueeze(0).unsqueeze(2).unsqueeze(3)  # [1, action_dim, 1, 1] 크기
+            # prev_action_one_hot = prev_action_one_hot.expand(-1, -1, x_pixel_num, y_pixel_num)  # 상태 텐서와 동일한 공간 차원으로 확장
+
+            # # 상태 텐서와 결합
+            # state_cat = torch.cat([state_cat, prev_action_one_hot], dim=1)
+            # print(state_cat.shape)
             action = ppo_agent.select_action(state_cat)
             prev_action = action
 
             states = []
             
-            state, reward, done, _ = env.step_new_ppo(action)
+            state, reward, done, is_dead = env.step_new_ppo(action)
+            if is_dead:
+                log_running_trial += 1 
+            if done:
+                log_world_cleared += 1
             # print(reward)
+            reward_accumulated += reward
             states.append(state)
             # print(state.size())
             # saving reward and is_terminals
-            ppo_agent.buffer.rewards.append(reward)
+            ppo_agent.buffer.rewards.append(reward_accumulated)
+            # ppo_agent.buffer.rewards.append(reward * 4)
+            print(f"reward_accumulated: {reward_accumulated: .2f}")
             ppo_agent.buffer.is_terminals.append(done)
-
+            reward_accumulated = 0
             
             current_ep_reward += reward
 
@@ -216,18 +245,24 @@ def train():
             if has_continuous_action_space and time_step % action_std_decay_freq == 0:
                 ppo_agent.decay_action_std(action_std_decay_rate, min_action_std)
 
+            # print(log_world_cleared)
             # log in logging file
+            # print(f"log_world_cleared: {log_world_cleared}, log_running_trial: {log_running_trial}")
             if time_step % log_freq == 0:
 
                 # log average reward till last episode
+                if log_running_episodes < 0.1 or log_running_trial < 0.1:
+                    continue
                 log_avg_reward = log_running_reward / log_running_episodes
                 log_avg_reward = round(log_avg_reward, 4)
 
-                log_f.write('{},{},{}\n'.format(i_episode, time_step, log_avg_reward))
+                log_f.write('{},{},{},{}\n'.format(i_episode, time_step, log_avg_reward,round(float(log_world_cleared)/float(log_running_trial),4)))
                 log_f.flush()
 
                 log_running_reward = 0
                 log_running_episodes = 0
+                log_world_cleared = 0
+                log_running_trial = 0
 
             # printing average reward
             if time_step % print_freq == 0:
@@ -245,7 +280,7 @@ def train():
             if time_step % save_model_freq == 0:
                 print("--------------------------------------------------------------------------------------------")
                 print("saving model at : " + checkpoint_path)
-                path = f"{directory}14_{time_step}.pth"
+                path = f"{directory}{run_num}_{time_step}.pth"
                 ppo_agent.save(path)
                 print("model saved")
                 print("Elapsed Time  : ", datetime.now().replace(microsecond=0) - start_time)

@@ -1,0 +1,26 @@
+                            OLS Regression Results                            
+==============================================================================
+Dep. Variable:       world_clear_rate   R-squared:                       0.006
+Model:                            OLS   Adj. R-squared:                 -0.014
+Method:                 Least Squares   F-statistic:                    0.3087
+Date:                Wed, 27 Nov 2024   Prob (F-statistic):              0.735
+Time:                        03:26:35   Log-Likelihood:                 36.438
+No. Observations:                 100   AIC:                            -66.88
+Df Residuals:                      97   BIC:                            -59.06
+Df Model:                           2                                         
+Covariance Type:            nonrobust                                         
+==============================================================================
+                 coef    std err          t      P>|t|      [0.025      0.975]
+------------------------------------------------------------------------------
+const          0.2405      0.146      1.645      0.103      -0.050       0.531
+gamma         -0.0360      0.162     -0.222      0.825      -0.358       0.286
+eps_clip      -0.1819      0.241     -0.754      0.453      -0.661       0.297
+==============================================================================
+Omnibus:                       76.779   Durbin-Watson:                   2.015
+Prob(Omnibus):                  0.000   Jarque-Bera (JB):              444.169
+Skew:                           2.589   Prob(JB):                     3.55e-97
+Kurtosis:                      11.933   Cond. No.                         19.4
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
